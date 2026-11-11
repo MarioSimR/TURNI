@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Turni Lavoro & Famiglia</title>
+  <meta name="theme-color" content="#1C2733" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+  <style>
+    /* ---------- Palette e caratteri ---------- */
+    :root {
+      --carta: #E9EDF1;        /* sfondo */
+      --superficie: #FFFFFF;
+      --inchiostro: #1C2733;   /* testo e barra */
+      --grigio: #5E6B78;
+      --linea: #D5DCE3;
+      --azione: #1E4D7A;
+
+      /* un colore fisso per ogni operatore */
+      --op0: #0E7C6B; --op0-t: #DDF1EC;
+      --op1: #B6650B; --op1-t: #FBEBD7;
+      --op2: #5B3FC4; --op2-t: #E7E2FA;
+      --opx: #4A5868; --opx-t: #E6EAEE;
+
+      --famiglia: #A23B5A; --famiglia-t: #FBF1F4;
+      --errore: #C0392B; --errore-t: #F9DCD8;
+
+      --font: Bahnschrift, "DIN Alternate", "Roboto Condensed", "Arial Narrow", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--carta); color: var(--inchiostro); font-family: var(--font); font-size: 15px; line-height: 1.4; font-variant-numeric: tabular-nums; }
+    button, input, select { font-family: inherit; font-size: inherit; color: inherit; }
+    :focus-visible { outline: 2px solid var(--azione); outline-offset: 2px; }
+
+    /* ---------- Barra in alto ---------- */
+    .barra { background: var(--inchiostro); color: #fff; }
+    .barra-dentro { max-width: 1200px; margin: 0 auto; padding: 14px 20px; display: flex; align-items: baseline; gap: 16px; }
+    .barra h1 { margin: 0; font-size: 1.6rem; font-weight: 600; font-stretch: condensed; letter-spacing: 0.01em; }
+    #statoSalvataggio { margin-left: auto; font-size: 0.85rem; color: #9FD8C9; }
+    #statoSalvataggio.attesa { color: #A9B4BF; }
+    #statoSalvataggio.ko { color: #F4A79D; }
+
+    main { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+    /* ---------- Riquadro "Oggi" ---------- */
+    .oggi-pannello { display: none; background: var(--superficie); border-radius: 10px; padding: 18px 20px 20px; margin-bottom: 18px; border-top: 4px solid var(--inchiostro); }
+    .ha-dati .oggi-pannello { display: block; }
+    .oggi-pannello h2 { margin: 0 0 14px; font-size: 1.05rem; font-weight: 600; }
+    .oggi-pannello h2 span { color: var(--grigio); font-weight: 400; }
+    .oggi-griglia { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.4fr); gap: 10px; }
+    .oggi-turno { border-radius: 8px; padding: 10px 14px 12px; background: var(--opx-t); border-left: 6px solid var(--opx); }
+    .oggi-turno .etichetta { font-size: 0.85rem; color: var(--grigio); }
+    .oggi-turno .nome { font-size: 1.9rem; font-weight: 700; font-stretch: condensed; line-height: 1.1; color: var(--opx); }
+    .oggi-turno.vuoto .nome { color: var(--grigio); font-weight: 400; }
+    .oggi-famiglia { border-radius: 8px; padding: 10px 14px 12px; background: var(--famiglia-t); border-left: 6px solid var(--famiglia); }
+    .oggi-famiglia .etichetta { font-size: 0.85rem; color: var(--grigio); }
+    .oggi-famiglia .testo { font-size: 1.05rem; font-weight: 600; color: var(--famiglia); margin-top: 2px; }
+    .oggi-famiglia .nota { font-size: 0.9rem; color: var(--inchiostro); margin-top: 4px; }
+    .oggi-famiglia .vuoto { color: var(--grigio); font-weight: 400; }
+
+    /* colori operatore (usati nel riquadro Oggi, nella legenda e nelle celle) */
+    .op-0 { --c: var(--op0); --t: var(--op0-t); }
+    .op-1 { --c: var(--op1); --t: var(--op1-t); }
+    .op-2 { --c: var(--op2); --t: var(--op2-t); }
+    .op-x { --c: var(--opx); --t: var(--opx-t); }
+    .oggi-turno[class*="op-"] { background: var(--t); border-left-color: var(--c); }
+    .oggi-turno[class*="op-"] .nome { color: var(--c); }
+
+    /* ---------- Comandi ---------- */
+    .comandi { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    button { border: 1px solid var(--linea); background: var(--superficie); border-radius: 6px; padding: 9px 16px; cursor: pointer; font-weight: 600; }
+    button:hover { border-color: var(--grigio); }
+    button.primario { background: var(--azione); border-color: var(--azione); color: #fff; }
+    button.primario:hover { background: #163A5C; }
+    .solo-con-dati { display: none; }
+    .ha-dati .solo-con-dati { display: inline-block; }
+
+    details.impostazioni { background: var(--superficie); border-radius: 10px; margin-bottom: 14px; }
+    details.impostazioni > summary { padding: 12px 18px; cursor: pointer; font-weight: 600; list-style: none; display: flex; align-items: center; gap: 8px; }
+    details.impostazioni > summary::-webkit-details-marker { display: none; }
+    details.impostazioni > summary::before { content: '▸'; color: var(--grigio); transition: transform 0.15s; }
+    details.impostazioni[open] > summary::before { transform: rotate(90deg); }
+    details.impostazioni > summary small { font-weight: 400; color: var(--grigio); }
+    .controlli { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; padding: 4px 18px 18px; align-items: end; }
+    .campo { display: flex; flex-direction: column; gap: 4px; }
+    .campo label { font-size: 0.85rem; color: var(--grigio); }
+    .campo input, .campo select { padding: 8px 10px; border: 1px solid var(--linea); border-radius: 6px; background: #fff; }
+
+    .messaggio { display: none; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 0.92rem; }
+    .messaggio.errore { display: block; background: var(--errore-t); color: var(--errore); }
+    .messaggio.info { display: block; background: #E3ECF5; color: var(--azione); }
+
+    .legenda { font-size: 0.85rem; color: var(--grigio); margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; }
+    .chip { display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--t); color: var(--c); font-weight: 600; }
+    .segno-mod { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--inchiostro); margin-right: 5px; vertical-align: middle; }
+    .segno-conf { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--errore); background: var(--errore-t); border-radius: 3px; margin-right: 5px; vertical-align: middle; }
+
+    /* ---------- Tabella ---------- */
+    .tabella-wrap { overflow-x: auto; background: var(--superficie); border-radius: 10px; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 760px; }
+    th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid #EEF1F4; overflow: hidden; overflow-wrap: anywhere; }
+    th { position: sticky; top: 0; z-index: 2; background: var(--superficie); color: var(--grigio); font-weight: 600; font-size: 0.85rem; border-bottom: 2px solid var(--inchiostro); }
+    th.th-famiglia { color: var(--famiglia); }
+
+    .riga-settimana td { background: var(--carta); cursor: pointer; user-select: none; font-weight: 600; padding: 9px 12px; border-bottom: none; }
+    .riga-settimana td::after { content: '▾'; float: right; color: var(--grigio); }
+    .riga-settimana .date { color: var(--grigio); font-weight: 400; margin-left: 8px; }
+    .riga-settimana .stato { margin-left: 8px; font-weight: 400; color: var(--grigio); }
+    tbody.chiusa .riga-settimana td::after { content: '▸'; }
+    tbody.chiusa tr.giorno { display: none; }
+    tbody.chiusa .riga-settimana td { color: var(--grigio); }
+    tbody.corrente .riga-settimana td { background: var(--inchiostro); color: #fff; }
+    tbody.corrente .riga-settimana .date, tbody.corrente .riga-settimana .stato, tbody.corrente .riga-settimana td::after { color: #C9D2DB; }
+
+    .col-data { font-weight: 600; position: relative; white-space: nowrap; }
+    .col-data small { display: block; font-weight: 400; font-size: 0.8rem; color: var(--errore); }
+
+    td.turno { padding: 4px 5px; }
+    td.turno select { width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid transparent; background: var(--t, #fff); color: var(--c, var(--inchiostro)); font-weight: 600; cursor: pointer; appearance: none; -webkit-appearance: none; }
+    td.turno select:hover { border-color: var(--c, var(--linea)); }
+    td.turno.op-vuoto select { background: #fff; border: 1px dashed var(--linea); color: var(--grigio); font-weight: 400; }
+    td.modificato select { box-shadow: inset 0 0 0 2px var(--inchiostro); }
+    td.modificato { position: relative; }
+    td.modificato::after { content: ''; position: absolute; top: 6px; right: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--inchiostro); pointer-events: none; }
+    td.conflitto select { background: var(--errore-t) !important; color: var(--errore) !important; box-shadow: inset 0 0 0 2px var(--errore) !important; }
+
+    .col-famiglia { background: var(--famiglia-t); color: var(--famiglia); font-weight: 600; border-left: 3px solid var(--famiglia); }
+    .col-note { color: var(--inchiostro); }
+    td[contenteditable="true"] { cursor: text; }
+    td[contenteditable="true"]:focus { outline: 2px solid var(--azione); outline-offset: -2px; background: #fff; }
+    td[contenteditable="true"]:empty::before { content: '—'; color: #C3CBD3; }
+
+    tr.weekend td, tr.festivo td { padding-top: 4px; padding-bottom: 4px; }
+    tr.weekend .col-data { color: var(--grigio); font-weight: 400; }
+    tr.weekend td.turno { background: repeating-linear-gradient(135deg, #F6F8FA 0 6px, #EEF1F4 6px 12px); }
+    tr.festivo .col-data { color: var(--errore); }
+    tr.festivo td.turno select { opacity: 0.55; }
+
+    tr.oggi td { background-color: #F3F8FC; }
+    tr.oggi .col-data { box-shadow: inset 5px 0 0 var(--azione); }
+    tr.oggi .col-data::after { content: 'oggi'; display: block; font-size: 0.75rem; font-weight: 600; color: var(--azione); }
+
+    .ripristina { display: none; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); padding: 1px 7px; font-size: 0.9rem; background: var(--inchiostro); color: #fff; border: none; border-radius: 4px; }
+    tr.ha-modifiche .ripristina { display: inline-block; }
+
+    /* ---------- Anteprima PDF ---------- */
+    #modalAnteprima { display: none; position: fixed; z-index: 10000; inset: 0; background: rgba(28,39,51,0.85); }
+    .modal-content { background: var(--superficie); margin: 1% auto; width: 95%; max-width: 1300px; height: 92vh; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+    .modal-header { padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--linea); gap: 14px; flex-wrap: wrap; }
+    .modal-header .opzioni { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+    .modal-header select { padding: 6px 8px; border: 1px solid var(--linea); border-radius: 6px; }
+    #avvisoPdf { font-size: 0.85rem; color: var(--errore); }
+    .modal-body { flex: 1; background: #525659; }
+    #pdfPreviewFrame { width: 100%; height: 100%; border: none; }
+
+    /* ---------- Scelta vista ---------- */
+    .scelta-vista { display: none; margin-left: auto; border: 1px solid var(--linea); border-radius: 6px; overflow: hidden; background: var(--superficie); }
+    .ha-dati .scelta-vista { display: inline-flex; }
+    .scelta-vista button { border: none; border-radius: 0; padding: 9px 14px; font-weight: 600; color: var(--grigio); }
+    .scelta-vista button[aria-pressed="true"] { background: var(--inchiostro); color: #fff; }
+    .vista-settimana .tabella-wrap { display: none; }
+    .vista-tabella #vistaSettimana { display: none; }
+    #vistaSettimana { display: none; }
+    .ha-dati.vista-settimana #vistaSettimana { display: block; }
+
+    /* ---------- Vista settimanale ---------- */
+    .nav-sett { display: flex; align-items: center; gap: 8px; background: var(--inchiostro); color: #fff; border-radius: 10px 10px 0 0; padding: 8px; }
+    .nav-sett button { background: transparent; border: 1px solid #3A4A5B; color: #fff; padding: 8px 14px; font-size: 1.1rem; line-height: 1; }
+    .nav-sett button:disabled { opacity: 0.3; cursor: default; }
+    .nav-sett .titolo-sett { flex: 1; text-align: center; }
+    .nav-sett .titolo-sett strong { display: block; font-size: 1.05rem; }
+    .nav-sett .titolo-sett span { font-size: 0.85rem; color: #C9D2DB; }
+    .nav-sett #vaiOggi { font-size: 0.85rem; padding: 8px 10px; }
+    .giorni-sett { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; padding: 10px; background: var(--superficie); border-radius: 0 0 10px 10px; }
+
+    .card-giorno { border: 1px solid var(--linea); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px; position: relative; }
+    .card-giorno.oggi { border: 2px solid var(--azione); box-shadow: inset 0 4px 0 var(--azione); }
+    .card-giorno .testa { display: flex; align-items: baseline; gap: 8px; min-height: 26px; }
+    .card-giorno .testa strong { font-size: 1.05rem; }
+    .card-giorno .testa .mese { color: var(--grigio); }
+    .card-giorno .testa .tag { font-size: 0.8rem; font-weight: 600; }
+    .card-giorno.oggi .testa .tag { color: var(--azione); }
+    .card-giorno.festivo .testa .tag, .card-giorno.festivo .testa strong { color: var(--errore); }
+    .card-giorno .ripristina { top: 18px; right: 10px; transform: none; }
+    .card-giorno.ha-modifiche .ripristina { display: inline-block; }
+
+    .riga-turno { display: grid; grid-template-columns: 82px 1fr; align-items: center; gap: 6px; position: relative; }
+    .riga-turno .etichetta { font-size: 0.85rem; color: var(--grigio); }
+    .riga-turno select { width: 100%; padding: 7px 8px; border-radius: 6px; border: 1px solid transparent; background: var(--t, #fff); color: var(--c, var(--inchiostro)); font-weight: 700; cursor: pointer; appearance: none; -webkit-appearance: none; }
+    .riga-turno.op-vuoto select { background: #fff; border: 1px dashed var(--linea); color: var(--grigio); font-weight: 400; }
+    .riga-turno.modificato select { box-shadow: inset 0 0 0 2px var(--inchiostro); }
+    .riga-turno.modificato::after { content: ''; position: absolute; top: 6px; right: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--inchiostro); pointer-events: none; }
+    .riga-turno.conflitto select { background: var(--errore-t) !important; color: var(--errore) !important; box-shadow: inset 0 0 0 2px var(--errore) !important; }
+    .card-giorno.festivo .riga-turno select { opacity: 0.55; }
+    .card-giorno.weekend { background: repeating-linear-gradient(135deg, #FAFBFC 0 6px, #F3F5F7 6px 12px); }
+    .card-giorno.weekend .testa strong { color: var(--grigio); font-weight: 600; }
+    .card-giorno .riposo { color: var(--grigio); font-size: 0.9rem; }
+
+    .card-giorno .campo-testo { border-radius: 6px; padding: 6px 8px; min-height: 32px; }
+    .card-giorno .col-famiglia { border-left: 3px solid var(--famiglia); }
+    .card-giorno .col-note { background: #F6F8FA; }
+    [contenteditable="true"]:empty::before { content: attr(data-vuoto); color: #A9B3BD; font-weight: 400; }
+    .card-giorno [contenteditable="true"]:focus { outline: 2px solid var(--azione); outline-offset: 0; background: #fff; }
+
+    @media (max-width: 720px) {
+      .oggi-griglia { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+      .oggi-turno { padding: 8px 8px 10px; border-left-width: 4px; }
+      .oggi-turno .nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      main { padding: 12px; }
+      .oggi-famiglia { grid-column: 1 / -1; }
+      .oggi-turno .nome { font-size: 1.15rem; }
+      .barra h1 { font-size: 1.3rem; }
+    }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body>
+
+<div class="barra">
+  <div class="barra-dentro">
+    <h1>Turni lavoro e famiglia</h1>
+    <span id="statoSalvataggio"></span>
+  </div>
+</div>
+
+<main id="app">
+  <section class="oggi-pannello" aria-live="polite">
+    <h2 id="oggiTitolo"></h2>
+    <div class="oggi-griglia">
+      <div class="oggi-turno" id="oggiMattino"><div class="etichetta">Mattino</div><div class="nome"></div></div>
+      <div class="oggi-turno" id="oggiPomeriggio"><div class="etichetta">Pomeriggio</div><div class="nome"></div></div>
+      <div class="oggi-turno" id="oggiCentrale"><div class="etichetta">Centrale</div><div class="nome"></div></div>
+      <div class="oggi-famiglia"><div class="etichetta">Famiglia</div><div class="testo" id="oggiFamiglia"></div><div class="nota" id="oggiNote"></div></div>
+    </div>
+  </section>
+
+  <details class="impostazioni" id="impostazioni">
+    <summary>Impostazioni calendario <small id="riepilogoImpostazioni"></small></summary>
+    <div class="controlli">
+      <div class="campo"><label for="dataInizio">Inizio (lunedì)</label><input type="date" id="dataInizio"></div>
+      <div class="campo"><label for="numSettimane">Settimane</label><input type="number" id="numSettimane" value="26" min="1" max="52"></div>
+      <div class="campo"><label for="opA">Operatore A</label><select id="opA" class="sel-operatore"></select></div>
+      <div class="campo"><label for="opB">Operatore B</label><select id="opB" class="sel-operatore"></select></div>
+      <div class="campo"><label for="opC">Operatore C</label><select id="opC" class="sel-operatore"></select></div>
+      <div class="campo"><button id="generaBtn" class="primario">Genera calendario</button></div>
+    </div>
+  </details>
+
+  <div id="messaggio" class="messaggio"></div>
+
+  <div class="comandi">
+    <button id="apriAnteprimaBtn" class="primario solo-con-dati">Stampa / PDF</button>
+    <button id="esportaBtn" class="solo-con-dati">Esporta backup</button>
+    <button id="importaBtn">Importa backup</button>
+    <input type="file" id="fileImporta" accept=".json,application/json" hidden>
+    <button id="installaBtn" class="primario" hidden>Installa app</button>
+    <div class="scelta-vista" role="group" aria-label="Vista">
+      <button id="vistaTabellaBtn" aria-pressed="false">Tabella</button>
+      <button id="vistaSettimanaBtn" aria-pressed="false">Settimana</button>
+    </div>
+  </div>
+
+  <div class="legenda solo-con-dati" id="legenda"></div>
+
+  <section id="vistaSettimana">
+    <div class="nav-sett">
+      <button id="settPrec" aria-label="Settimana precedente">‹</button>
+      <div class="titolo-sett"><strong id="settTitolo"></strong><span id="settDate"></span></div>
+      <button id="vaiOggi">Oggi</button>
+      <button id="settSucc" aria-label="Settimana successiva">›</button>
+    </div>
+    <div class="giorni-sett" id="giorniSett"></div>
+  </section>
+
+  <div class="tabella-wrap">
+    <table id="tabellaTurni" style="display:none;">
+      <colgroup>
+        <col style="width:14%"><col style="width:13%"><col style="width:13%"><col style="width:13%"><col style="width:26%"><col style="width:21%">
+      </colgroup>
+      <thead>
+        <tr><th>Data</th><th>Mattino</th><th>Pomeriggio</th><th>Centrale</th><th class="th-famiglia">Famiglia</th><th>Note e ferie</th></tr>
+      </thead>
+    </table>
+  </div>
+</main>
+
+<div id="modalAnteprima">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="opzioni">
+        <label>Periodo <select id="periodo"></select></label>
+        <select id="orientamento" aria-label="Orientamento">
+          <option value="p">Verticale</option>
+          <option value="l" selected>Orizzontale</option>
+        </select>
+        <label style="cursor:pointer;"><input type="checkbox" id="adattaPagina" checked> Adatta a una pagina</label>
+        <span id="avvisoPdf"></span>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button id="scaricaPdfBtn" class="primario">Scarica PDF</button>
+        <button id="chiudiModal">Chiudi</button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <iframe id="pdfPreviewFrame" title="Anteprima PDF"></iframe>
+    </div>
+  </div>
+</div>
+
+<script>
+  /* ================= COSTANTI E STATO ================= */
+  const STORAGE_KEY = "turniLavoroLaura_v2";   // chiave invariata: così i dati già salvati restano
+  const OLD_KEY = "configTurniCRI";          // chiave della versione precedente
+  const TURNI = ["Mattino", "Pomeriggio", "Centrale"];
+  const NOMI_PREDEFINITI = ["PIERO", "CRISTIAN", "MARIO"];
+  const NUOVO = "__nuovo__";                  // voce "Nuovo nome…" dei menu
+
+  // Tutti i dati sono legati alla DATA (chiave "AAAA-MM-GG"), non alla posizione della riga
+  let stato = nuovoStato();
+  let calendario = [];       // giorni generati dalla rotazione
+  let perData = {};          // chiave data -> giorno
+
+  function nuovoStato() {
+    return { versione: 2, config: null, modifiche: {}, laura: {}, note: {}, nomi: [...NOMI_PREDEFINITI] };
+  }
+
+  /* ================= ELENCO NOMI (usato da tutti i menu a tendina) ================= */
+  function aggiungiNome(nome) {
+    nome = (nome || "").trim();
+    if (!nome) return "";
+    const esistente = stato.nomi.find(n => n.toLowerCase() === nome.toLowerCase());
+    if (esistente) return esistente;
+    stato.nomi.push(nome);
+    return nome;
+  }
+
+  function chiediNuovoNome() {
+    const n = prompt("Nome del nuovo operatore:");
+    return n && n.trim() ? aggiungiNome(n.toUpperCase()) : null;
+  }
+
+  function opzione(sel, valore, testo) {
+    const o = document.createElement("option");
+    o.value = valore; o.textContent = testo;
+    sel.appendChild(o);
+  }
+
+  // Menu in alto: Operatore A / B / C
+  function riempiSelectOperatori(valori) {
+    ["opA", "opB", "opC"].forEach((id, i) => {
+      const sel = $(id);
+      const v = valori ? valori[i] : sel.value;
+      sel.innerHTML = "";
+      stato.nomi.forEach(n => opzione(sel, n, n));
+      opzione(sel, NUOVO, "➕ Nuovo nome…");
+      sel.value = stato.nomi.includes(v) ? v : (stato.nomi[i] || stato.nomi[0]);
+      sel.dataset.prec = sel.value;
+    });
+  }
+
+  document.querySelectorAll(".sel-operatore").forEach(sel => {
+    sel.addEventListener("change", () => {
+      if (sel.value !== NUOVO) { sel.dataset.prec = sel.value; return; }
+      const nome = chiediNuovoNome();
+      const valori = ["opA", "opB", "opC"].map(id => id === sel.id ? (nome || sel.dataset.prec) : $(id).value);
+      riempiSelectOperatori(valori);
+      if (nome) { salva(); aggiornaTuttiIMenuTurno(); }
+    });
+  });
+
+  // Menu nelle celle dei turni
+  function creaSelectTurno(valore) {
+    const sel = document.createElement("select");
+    riempiSelectTurno(sel, valore);
+    return sel;
+  }
+  function riempiSelectTurno(sel, valore) {
+    sel.innerHTML = "";
+    opzione(sel, "", "—");
+    stato.nomi.forEach(n => opzione(sel, n, n));
+    if (valore && !stato.nomi.includes(valore)) opzione(sel, valore, valore);
+    opzione(sel, NUOVO, "➕ Nuovo nome…");
+    sel.value = valore || "";
+    sel.dataset.prec = sel.value;
+  }
+  function aggiornaTuttiIMenuTurno() {
+    document.querySelectorAll("td.turno select").forEach(s => riempiSelectTurno(s, s.value === NUOVO ? s.dataset.prec : s.value));
+  }
+  function valoreCella(td) {
+    const s = td.querySelector("select");
+    return (s ? s.value : td.textContent).trim();
+  }
+
+  const $ = id => document.getElementById(id);
+
+  /* ================= DATE ================= */
+  // Le date si leggono in ora locale (new Date("2026-11-10") le leggerebbe in UTC)
+  function parseData(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
+  function chiave(d) {
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function aggiungiGiorni(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
+  function lunediDi(d) { return aggiungiGiorni(d, -((d.getDay() + 6) % 7)); }
+  function oggiZero() { const o = new Date(); return new Date(o.getFullYear(), o.getMonth(), o.getDate()); }
+
+  const fmtGiorno = d => d.toLocaleDateString("it-IT", { weekday: "short", day: "2-digit", month: "short" });
+  const fmtBreve  = d => d.toLocaleDateString("it-IT", { day: "2-digit", month: "short" });
+  const fmtLungo  = d => d.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+  /* ================= FESTIVI ITALIANI ================= */
+  const FESTIVI_FISSI = {
+    "01-01": "Capodanno", "01-06": "Epifania", "04-25": "Liberazione", "05-01": "Festa del Lavoro",
+    "06-02": "Festa della Repubblica", "08-15": "Ferragosto", "11-01": "Ognissanti",
+    "12-08": "Immacolata", "12-25": "Natale", "12-26": "Santo Stefano"
+  };
+  function pasqua(y) { // algoritmo di Meeus/Jones/Butcher
+    const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4;
+    const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const mese = Math.floor((h + l - 7 * m + 114) / 31), giorno = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(y, mese - 1, giorno);
+  }
+  function festivo(d) {
+    const k = chiave(d);
+    if (FESTIVI_FISSI[k.slice(5)]) return FESTIVI_FISSI[k.slice(5)];
+    if (chiave(aggiungiGiorni(pasqua(d.getFullYear()), 1)) === k) return "Pasquetta";
+    return null;
+  }
+
+  /* ================= ROTAZIONE (stessa logica dell'originale) ================= */
+  function generaTurni(inizio, operatori, settimane) {
+    const out = [];
+    let settPrecedente = null;
+    for (let s = 0; s < settimane; s++) {
+      const sett = [];
+      for (let d = 0; d < 7; d++) {
+        const data = aggiungiGiorni(inizio, s * 7 + d);
+        let m = "", p = "", c = "";
+        if (d < 5) {
+          if (s === 0 && d === 0) { [m, p, c] = operatori; }
+          else if (d === 0) { const v = settPrecedente[4]; c = v.Mattino; m = v.Pomeriggio; p = v.Centrale; }
+          else {
+            const prev = sett[d - 1];
+            const others = operatori.filter(op => op !== prev.Centrale);
+            c = prev.Centrale;
+            m = (prev.Mattino === others[0]) ? others[1] : others[0];
+            p = (prev.Mattino === others[0]) ? others[0] : others[1];
+          }
+        }
+        sett.push({ settimana: s + 1, data, key: chiave(data), weekend: d >= 5, Mattino: m, Pomeriggio: p, Centrale: c });
+      }
+      settPrecedente = sett;
+      out.push(...sett);
+    }
+    return out;
+  }
+
+  function valoreTurno(g, t) {
+    const mod = stato.modifiche[g.key];
+    return (mod && mod[t] !== undefined) ? mod[t] : g[t];
+  }
+
+  function costruisciCalendario() {
+    const c = stato.config;
+    calendario = generaTurni(parseData(c.dataInizio), c.operatori, c.numSettimane);
+    perData = {};
+    calendario.forEach(g => perData[g.key] = g);
+  }
+
+  /* ================= MESSAGGI E SALVATAGGIO ================= */
+  function messaggio(testo, tipo) {
+    const el = $("messaggio");
+    el.textContent = testo || "";
+    el.className = "messaggio" + (testo ? " " + tipo : "");
+  }
+
+  function salva() {
+    clearTimeout(timerSalva); timerSalva = null;
+    const el = $("statoSalvataggio");
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stato));
+      el.className = "";
+      el.textContent = "✓ Salvato alle " + new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+    } catch (e) {
+      el.className = "ko";
+      el.textContent = "⚠ Salvataggio non riuscito: esporta un backup";
+    }
+  }
+  let timerSalva = null;
+  function salvaDifferito() {
+    const el = $("statoSalvataggio");
+    el.className = "attesa"; el.textContent = "Salvataggio…";
+    clearTimeout(timerSalva);
+    timerSalva = setTimeout(salva, 500);
+  }
+  window.addEventListener("beforeunload", () => { if (timerSalva) salva(); });
+
+  /* ================= LETTURA E CONTROLLO DEGLI INPUT ================= */
+  function leggiConfig() {
+    const d = $("dataInizio").value;
+    if (!d) return { errore: "Seleziona la data di inizio." };
+
+    const n = parseInt($("numSettimane").value, 10);
+    if (!(n >= 1 && n <= 52)) return { errore: "Il numero di settimane deve essere tra 1 e 52." };
+
+    const operatori = [$("opA").value, $("opB").value, $("opC").value].map(v => v.trim());
+    if (operatori.some(o => !o || o === NUOVO)) return { errore: "Scegli tutti e tre gli operatori." };
+    if (new Set(operatori.map(o => o.toLowerCase())).size < 3) return { errore: "I tre operatori devono avere nomi diversi, altrimenti la rotazione non funziona." };
+
+    let inizio = parseData(d), avviso = "";
+    if (inizio.getDay() !== 1) {
+      inizio = lunediDi(inizio);
+      $("dataInizio").value = chiave(inizio);
+      avviso = "La data scelta non era un lunedì: il calendario parte da " + fmtLungo(inizio) + ".";
+    }
+    return { config: { dataInizio: chiave(inizio), numSettimane: n, operatori }, avviso };
+  }
+
+  function riempiInput() {
+    const c = stato.config;
+    $("dataInizio").value = c.dataInizio;
+    $("numSettimane").value = c.numSettimane;
+    riempiSelectOperatori(c.operatori);
+  }
+
+  // Per i dati salvati prima dei menu: ricostruisce l'elenco nomi da operatori e modifiche
+  function completaElencoNomi() {
+    if (!Array.isArray(stato.nomi) || !stato.nomi.length) stato.nomi = [];
+    if (stato.config) stato.config.operatori.forEach(aggiungiNome);
+    Object.values(stato.modifiche).forEach(m => Object.values(m).forEach(aggiungiNome));
+    if (!stato.nomi.length) stato.nomi = [...NOMI_PREDEFINITI];
+  }
+
+  /* ================= VISUALIZZAZIONE ================= */
+  function mostraTurni(scorri) {
+    const table = $("tabellaTurni");
+    table.querySelectorAll("tbody").forEach(b => b.remove());
+
+    const oggi = oggiZero(), oggiK = chiave(oggi);
+    let tbody = null, corrente = null;
+
+    calendario.forEach((g, i) => {
+      if (i % 7 === 0) {
+        const domenica = aggiungiGiorni(g.data, 6);
+        const passata = domenica < oggi;                       // corretto: confronto con la domenica
+        const inCorso = g.data <= oggi && oggi <= domenica;
+
+        tbody = document.createElement("tbody");
+        tbody.className = "settimana" + (passata ? " chiusa" : "") + (inCorso ? " corrente" : "");
+        if (inCorso) corrente = tbody;
+
+        const tr = document.createElement("tr");
+        tr.className = "riga-settimana";
+        const td = document.createElement("td");
+        td.colSpan = 6;
+        td.textContent = `Settimana ${g.settimana}`;
+        const sd = document.createElement("span"); sd.className = "date";
+        sd.textContent = `${fmtBreve(g.data)} – ${fmtBreve(domenica)}`;
+        td.appendChild(sd);
+        if (passata || inCorso) {
+          const st = document.createElement("span"); st.className = "stato";
+          st.textContent = passata ? "conclusa" : "in corso";
+          td.appendChild(st);
+        }
+        tr.appendChild(td);
+        const tb = tbody;
+        tr.addEventListener("click", () => tb.classList.toggle("chiusa"));
+        tbody.appendChild(tr);
+        table.appendChild(tbody);
+      }
+
+      const fest = festivo(g.data);
+      const tr = document.createElement("tr");
+      tr.className = "giorno" + (g.weekend ? " weekend" : "") + (fest ? " festivo" : "") + (g.key === oggiK ? " oggi" : "");
+      tr.dataset.key = g.key;
+
+      const tdD = document.createElement("td");
+      tdD.className = "col-data";
+      tdD.textContent = fmtGiorno(g.data);
+      if (fest) { const s = document.createElement("small"); s.textContent = fest; tdD.appendChild(s); }
+      const btn = document.createElement("button");
+      btn.className = "ripristina"; btn.textContent = "↺"; btn.title = "Ripristina i turni automatici di questo giorno";
+      btn.addEventListener("click", () => ripristina(tr, g));
+      tdD.appendChild(btn);
+      tr.appendChild(tdD);
+
+      TURNI.forEach(t => {
+        const td = document.createElement("td");
+        td.className = "turno " + t;
+        td.dataset.campo = t;
+        if (g.weekend) td.textContent = valoreTurno(g, t);
+        else td.appendChild(creaSelectTurno(valoreTurno(g, t)));
+        tr.appendChild(td);
+      });
+
+      const tdL = document.createElement("td");
+      tdL.className = "col-famiglia"; tdL.dataset.campo = "laura"; tdL.contentEditable = "true";
+      tdL.textContent = stato.laura[g.key] || "";
+      tr.appendChild(tdL);
+
+      const tdN = document.createElement("td");
+      tdN.className = "col-note"; tdN.dataset.campo = "note"; tdN.contentEditable = "true";
+      tdN.textContent = stato.note[g.key] || "";
+      tr.appendChild(tdN);
+
+      tbody.appendChild(tr);
+      aggiornaMarcature(tr, g);
+    });
+
+    table.style.display = "table";
+    $("app").classList.add("ha-dati");
+    aggiornaLegenda();
+    aggiornaOggi();
+    aggiornaRiepilogo();
+    if (scorri) settimanaVista = settimanaDiOggi();
+    mostraSettimana();
+    const inTabella = $("app").classList.contains("vista-tabella");
+    if (scorri && corrente && inTabella) corrente.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  // Evidenzia le celle cambiate a mano e la stessa persona su due turni nello stesso giorno
+  function aggiornaMarcature(tr, g) {
+    const mod = stato.modifiche[g.key] || {};
+    const celle = TURNI.map(t => tr.querySelector(`[data-campo="${t}"]`)).filter(Boolean);
+    if (celle.length < 3) { tr.classList.toggle("ha-modifiche", false); return; }
+    const nomi = celle.map(td => valoreCella(td).toLowerCase());
+    celle.forEach((td, i) => {
+      td.classList.remove("op-0", "op-1", "op-2", "op-x", "op-vuoto");
+      if (!g.weekend) td.classList.add(classeOperatore(valoreCella(td)));
+      td.classList.toggle("modificato", mod[TURNI[i]] !== undefined);
+      td.classList.toggle("conflitto", !!nomi[i] && nomi.filter(n => n === nomi[i]).length > 1);
+    });
+    tr.classList.toggle("ha-modifiche", Object.keys(mod).length > 0);
+  }
+
+  // Colore fisso per ogni operatore: A, B, C del calendario; gli altri (sostituti) in grigio
+  function classeOperatore(nome) {
+    if (!nome) return "op-vuoto";
+    const i = stato.config ? stato.config.operatori.indexOf(nome) : -1;
+    return i >= 0 ? "op-" + i : "op-x";
+  }
+
+  function aggiornaLegenda() {
+    const el = $("legenda");
+    el.innerHTML = "";
+    stato.config.operatori.forEach((n, i) => {
+      const c = document.createElement("span"); c.className = "chip op-" + i; c.textContent = n; el.appendChild(c);
+    });
+    const altri = stato.nomi.filter(n => !stato.config.operatori.includes(n));
+    if (altri.length) { const c = document.createElement("span"); c.className = "chip op-x"; c.textContent = "Altri"; el.appendChild(c); }
+    const m = document.createElement("span"); m.innerHTML = '<i class="segno-mod"></i>Cambiato a mano (↺ per ripristinare)'; el.appendChild(m);
+    const k = document.createElement("span"); k.innerHTML = '<i class="segno-conf"></i>Stessa persona su due turni'; el.appendChild(k);
+  }
+
+  function aggiornaRiepilogo() {
+    const c = stato.config;
+    $("riepilogoImpostazioni").textContent =
+      `dal ${fmtBreve(parseData(c.dataInizio))}, ${c.numSettimane} settimane`;
+  }
+
+  // Riquadro in alto: oggi, oppure il prossimo giorno lavorativo se oggi è weekend o festivo
+  function aggiornaOggi() {
+    const oggiK = chiave(oggiZero());
+    let g = perData[oggiK], titolo = "Oggi";
+    if (!g || g.weekend || festivo(g.data)) {
+      const prossimo = calendario.find(x => x.key > oggiK && !x.weekend && !festivo(x.data));
+      if (prossimo) { g = prossimo; titolo = "Prossimo giorno lavorativo"; }
+    }
+    const pannello = document.querySelector(".oggi-pannello");
+    if (!g) { pannello.style.display = "none"; return; }
+    pannello.style.display = "";
+    $("oggiTitolo").innerHTML = "";
+    $("oggiTitolo").append(titolo + ", ");
+    const sp = document.createElement("span"); sp.textContent = fmtLungo(g.data); $("oggiTitolo").appendChild(sp);
+
+    TURNI.forEach(t => {
+      const box = $("oggi" + t), nome = valoreTurno(g, t);
+      box.className = "oggi-turno " + (nome ? classeOperatore(nome) : "vuoto");
+      box.querySelector(".nome").textContent = nome || "nessuno";
+    });
+    const fam = stato.laura[g.key], note = stato.note[g.key];
+    $("oggiFamiglia").innerHTML = "";
+    if (fam) $("oggiFamiglia").textContent = fam;
+    else { const v = document.createElement("span"); v.className = "vuoto"; v.textContent = "Niente in programma"; $("oggiFamiglia").appendChild(v); }
+    $("oggiNote").textContent = note || "";
+  }
+
+  function ripristina(tr, g) {
+    delete stato.modifiche[g.key];
+    TURNI.forEach(t => {
+      const s = tr.querySelector(`[data-campo="${t}"] select`);
+      if (s) riempiSelectTurno(s, g[t]);
+    });
+    aggiornaMarcature(tr, g);
+    aggiornaOggi();
+    salva();
+  }
+
+  /* ================= MODIFICHE NELLA TABELLA (salvataggio automatico) ================= */
+  const tabella = $("tabellaTurni");
+  const contenitori = [tabella, $("giorniSett")];
+
+  contenitori.forEach(el => el.addEventListener("input", e => {
+    const td = e.target.closest("[data-campo]");
+    if (!td) return;
+    const tr = td.closest(".giorno"), key = tr.dataset.key, g = perData[key];
+    const campo = td.dataset.campo, v = td.textContent.trim();
+    if (campo !== "laura" && campo !== "note") return;   // i turni passano dal menu (evento change)
+    if (v) stato[campo][key] = v; else delete stato[campo][key];
+    aggiornaOggi();
+    salvaDifferito();
+  }));
+
+  // Cambio turno dal menu a tendina
+  contenitori.forEach(el => el.addEventListener("change", e => {
+    const sel = e.target;
+    if (sel.tagName !== "SELECT") return;
+    const td = sel.closest("[data-campo]"), tr = td.closest(".giorno");
+    const key = tr.dataset.key, g = perData[key], campo = td.dataset.campo;
+
+    if (sel.value === NUOVO) {
+      const nome = chiediNuovoNome();
+      if (!nome) { sel.value = sel.dataset.prec; return; }
+      aggiornaTuttiIMenuTurno();
+      riempiSelectOperatori();
+      sel.value = nome;
+    }
+    sel.dataset.prec = sel.value;
+
+    const v = sel.value;
+    const mod = stato.modifiche[key] || {};
+    if (v === g[campo]) delete mod[campo]; else mod[campo] = v;
+    if (Object.keys(mod).length) stato.modifiche[key] = mod; else delete stato.modifiche[key];
+    aggiornaMarcature(tr, g);
+    aggiornaOggi();
+    salva();
+  }));
+
+  // Invio = conferma la cella (niente a capo nascosti)
+  contenitori.forEach(el => el.addEventListener("keydown", e => {
+    if (e.key === "Enter" && e.target.isContentEditable) { e.preventDefault(); e.target.blur(); }
+  }));
+  // Incolla solo testo semplice
+  contenitori.forEach(el => el.addEventListener("paste", e => {
+    if (!e.target.isContentEditable) return;
+    e.preventDefault();
+    const testo = (e.clipboardData || window.clipboardData).getData("text/plain").replace(/\s+/g, " ");
+    document.execCommand("insertText", false, testo);
+  }));
+
+  /* ================= VISTA SETTIMANALE ================= */
+  let settimanaVista = 1;
+  const VISTA_KEY = "turniLavoroFamiglia_vista";
+
+  function settimanaDiOggi() {
+    const k = chiave(oggiZero());
+    if (!calendario.length) return 1;
+    if (k < calendario[0].key) return 1;
+    const g = perData[k];
+    return g ? g.settimana : stato.config.numSettimane;
+  }
+
+  function mostraSettimana() {
+    if (!calendario.length) return;
+    const tot = stato.config.numSettimane;
+    settimanaVista = Math.min(Math.max(1, settimanaVista), tot);
+    const giorni = calendario.slice((settimanaVista - 1) * 7, settimanaVista * 7);
+    const oggiK = chiave(oggiZero());
+
+    $("settTitolo").textContent = `Settimana ${settimanaVista} di ${tot}`;
+    $("settDate").textContent = `${fmtBreve(giorni[0].data)} – ${fmtBreve(giorni[6].data)}`
+      + (giorni.some(g => g.key === oggiK) ? " · in corso" : "");
+    $("settPrec").disabled = settimanaVista <= 1;
+    $("settSucc").disabled = settimanaVista >= tot;
+
+    const box = $("giorniSett");
+    box.innerHTML = "";
+    giorni.forEach(g => {
+      const fest = festivo(g.data);
+      const card = document.createElement("article");
+      card.className = "card-giorno giorno" + (g.weekend ? " weekend" : "") + (fest ? " festivo" : "") + (g.key === oggiK ? " oggi" : "");
+      card.dataset.key = g.key;
+
+      const testa = document.createElement("div");
+      testa.className = "testa";
+      const nomeGiorno = g.data.toLocaleDateString("it-IT", { weekday: "long", day: "numeric" });
+      const st = document.createElement("strong"); st.textContent = nomeGiorno.charAt(0).toUpperCase() + nomeGiorno.slice(1);
+      const ms = document.createElement("span"); ms.className = "mese"; ms.textContent = g.data.toLocaleDateString("it-IT", { month: "short" });
+      testa.append(st, ms);
+      const tagTesto = fest || (g.key === oggiK ? "oggi" : "");
+      if (tagTesto) { const tg = document.createElement("span"); tg.className = "tag"; tg.textContent = tagTesto; testa.appendChild(tg); }
+      card.appendChild(testa);
+
+      if (g.weekend) {
+        const r = document.createElement("div"); r.className = "riposo"; r.textContent = "Riposo";
+        card.appendChild(r);
+      } else {
+        const btn = document.createElement("button");
+        btn.className = "ripristina"; btn.textContent = "↺"; btn.title = "Ripristina i turni automatici di questo giorno";
+        btn.addEventListener("click", () => ripristina(card, g));
+        card.appendChild(btn);
+        TURNI.forEach(t => {
+          const riga = document.createElement("div");
+          riga.className = "riga-turno turno";
+          riga.dataset.campo = t;
+          const et = document.createElement("span"); et.className = "etichetta"; et.textContent = t;
+          riga.append(et, creaSelectTurno(valoreTurno(g, t)));
+          card.appendChild(riga);
+        });
+      }
+
+      const fam = document.createElement("div");
+      fam.className = "campo-testo col-famiglia"; fam.dataset.campo = "laura"; fam.contentEditable = "true";
+      fam.dataset.vuoto = "Famiglia…";
+      fam.textContent = stato.laura[g.key] || "";
+      const nt = document.createElement("div");
+      nt.className = "campo-testo col-note"; nt.dataset.campo = "note"; nt.contentEditable = "true";
+      nt.dataset.vuoto = "Note e ferie…";
+      nt.textContent = stato.note[g.key] || "";
+      card.append(fam, nt);
+
+      box.appendChild(card);
+      aggiornaMarcature(card, g);
+    });
+  }
+
+  function vaiASettimana(n) { settimanaVista = n; mostraSettimana(); }
+  $("settPrec").addEventListener("click", () => vaiASettimana(settimanaVista - 1));
+  $("settSucc").addEventListener("click", () => vaiASettimana(settimanaVista + 1));
+  $("vaiOggi").addEventListener("click", () => vaiASettimana(settimanaDiOggi()));
+
+  // Scorrimento col dito sul telefono
+  let toccoX = null, toccoY = null;
+  $("giorniSett").addEventListener("touchstart", e => { toccoX = e.touches[0].clientX; toccoY = e.touches[0].clientY; }, { passive: true });
+  $("giorniSett").addEventListener("touchend", e => {
+    if (toccoX === null) return;
+    const dx = e.changedTouches[0].clientX - toccoX, dy = e.changedTouches[0].clientY - toccoY;
+    toccoX = null;
+    if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      if (dx < 0 && settimanaVista < stato.config.numSettimane) vaiASettimana(settimanaVista + 1);
+      if (dx > 0 && settimanaVista > 1) vaiASettimana(settimanaVista - 1);
+    }
+  });
+
+  // Scelta Tabella / Settimana (ricordata su questo dispositivo)
+  function impostaVista(v, ridisegna) {
+    const app = $("app");
+    app.classList.toggle("vista-settimana", v === "settimana");
+    app.classList.toggle("vista-tabella", v === "tabella");
+    $("vistaTabellaBtn").setAttribute("aria-pressed", v === "tabella");
+    $("vistaSettimanaBtn").setAttribute("aria-pressed", v === "settimana");
+    try { localStorage.setItem(VISTA_KEY, v); } catch {}
+    if (ridisegna && stato.config) {
+      if (v === "settimana") mostraSettimana(); else mostraTurni(false);
+    }
+  }
+  $("vistaTabellaBtn").addEventListener("click", () => impostaVista("tabella", true));
+  $("vistaSettimanaBtn").addEventListener("click", () => impostaVista("settimana", true));
+  (function vistaIniziale() {
+    let v = null;
+    try { v = localStorage.getItem(VISTA_KEY); } catch {}
+    impostaVista(v || (window.innerWidth < 720 ? "settimana" : "tabella"), false);
+  })();
+
+  /* ================= GENERA ================= */
+  $("generaBtn").addEventListener("click", () => {
+    const r = leggiConfig();
+    if (r.errore) return messaggio(r.errore, "errore");
+    stato.config = r.config;
+    costruisciCalendario();
+    mostraTurni(true);
+    salva();
+    $("impostazioni").open = false;
+    messaggio(r.avviso, "info");
+  });
+
+  /* ================= BACKUP ================= */
+  $("esportaBtn").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify({ ...stato, esportatoIl: new Date().toISOString() }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `Backup_Turni_${chiave(new Date())}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  });
+
+  $("importaBtn").addEventListener("click", () => $("fileImporta").click());
+  $("fileImporta").addEventListener("change", e => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const s = JSON.parse(reader.result);
+        const c = s && s.config;
+        if (!c || !c.dataInizio || !Array.isArray(c.operatori) || c.operatori.length !== 3) throw new Error();
+        if (stato.config && !confirm("Sostituire i dati attuali con quelli del backup?")) return;
+        stato = { ...nuovoStato(), config: c, modifiche: s.modifiche || {}, laura: s.laura || {}, note: s.note || {}, nomi: Array.isArray(s.nomi) ? s.nomi : [] };
+        completaElencoNomi();
+        riempiInput();
+        costruisciCalendario();
+        mostraTurni(true);
+        salva();
+        messaggio("Backup importato correttamente.", "info");
+      } catch {
+        messaggio("Il file scelto non è un backup valido di questa app.", "errore");
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  /* ================= PDF ================= */
+  function riempiPeriodi() {
+    const sel = $("periodo"), prima = sel.value;
+    sel.innerHTML = "";
+    const aggiungi = (v, t) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.appendChild(o); };
+    aggiungi("futuro", "Dalla settimana in corso");
+    aggiungi("tutto", "Tutto il calendario");
+    const mesi = [...new Set(calendario.map(g => g.key.slice(0, 7)))];
+    mesi.forEach(m => {
+      const [y, mm] = m.split("-").map(Number);
+      const t = new Date(y, mm - 1, 1).toLocaleDateString("it-IT", { month: "long", year: "numeric" });
+      aggiungi(m, t.charAt(0).toUpperCase() + t.slice(1));
+    });
+    if ([...sel.options].some(o => o.value === prima)) sel.value = prima;
+  }
+
+  function giorniPerPeriodo(per) {
+    if (per === "tutto") return calendario;
+    if (per === "futuro") { const k = chiave(lunediDi(oggiZero())); return calendario.filter(g => g.key >= k); }
+    return calendario.filter(g => g.key.startsWith(per));
+  }
+
+  // [testo, sfondo] per ogni operatore, come nella pagina
+  const COLORI_PDF = {
+    "op-0": [[14, 124, 107], [221, 241, 236]],
+    "op-1": [[182, 101, 11], [251, 235, 215]],
+    "op-2": [[91, 63, 196], [231, 226, 250]],
+    "op-x": [[74, 88, 104], [230, 234, 238]]
+  };
+  let ultimoBlob = null;
+  function generaPDF(scarica) {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      $("avvisoPdf").textContent = "Libreria PDF non caricata: serve la connessione a internet.";
+      return;
+    }
+    const { jsPDF } = window.jspdf;
+    const orient = $("orientamento").value;
+    const fit = $("adattaPagina").checked;
+    const sel = $("periodo");
+    const giorni = giorniPerPeriodo(sel.value);
+    if (!giorni.length) { $("avvisoPdf").textContent = "Nessun giorno nel periodo scelto."; return; }
+
+    const body = [], meta = [];
+    let ultimaSett = null;
+    giorni.forEach(g => {
+      if (g.settimana !== ultimaSett) {
+        ultimaSett = g.settimana;
+        const lun = calendario[(g.settimana - 1) * 7].data, dom = aggiungiGiorni(lun, 6);
+        body.push([{ content: `Settimana ${g.settimana}  ·  ${fmtBreve(lun)} – ${fmtBreve(dom)}`, colSpan: 6 }]);
+        meta.push({ tipo: "sett" });
+      }
+      const fest = festivo(g.data);
+      const mod = stato.modifiche[g.key] || {};
+      body.push([
+        fmtGiorno(g.data) + (fest ? `  (${fest})` : ""),
+        ...TURNI.map(t => valoreTurno(g, t)),
+        stato.laura[g.key] || "",
+        stato.note[g.key] || ""
+      ]);
+      meta.push({ tipo: "giorno", weekend: g.weekend, festivo: !!fest, modificati: TURNI.map((t, i) => mod[t] !== undefined ? i + 1 : null).filter(Boolean) });
+    });
+
+    const doc = new jsPDF({ orientation: orient, unit: "mm", format: "a4" });
+    const pageH = doc.internal.pageSize.getHeight();
+    const titoloY = 9, startY = 13, margine = 6;
+
+    // Dimensione del carattere calcolata in base alle righe effettive
+    let fontSize = 8, padding = 1.5;
+    $("avvisoPdf").textContent = "";
+    if (fit) {
+      padding = 0.7;
+      const disponibile = pageH - startY - margine;
+      const righe = body.length + 1;
+      fontSize = ((disponibile / righe) - 2 * padding) / (0.3528 * 1.15);
+      fontSize = Math.min(9, Math.floor(fontSize * 10) / 10);
+      if (fontSize < 5) {
+        fontSize = 5;
+        $("avvisoPdf").textContent = "Troppe righe per una pagina leggibile: scegli un mese o togli 'Adatta'.";
+      }
+    }
+
+    doc.setFontSize(12);
+    doc.setTextColor(28, 39, 51);
+    doc.text("TURNI LAVORO & FAMIGLIA  –  " + sel.options[sel.selectedIndex].text, margine, titoloY);
+    doc.setFontSize(7);
+    doc.setTextColor(120);
+    doc.text("Stampato il " + new Date().toLocaleDateString("it-IT"), doc.internal.pageSize.getWidth() - margine, titoloY, { align: "right" });
+
+    doc.autoTable({
+      startY,
+      head: [["DATA", "MATTINO", "POMERIGGIO", "CENTRALE", "FAMIGLIA", "NOTE / FERIE"]],
+      body,
+      theme: "grid",
+      styles: { fontSize, cellPadding: padding, halign: "center", valign: "middle", lineColor: [220, 220, 220], lineWidth: 0.1 },
+      headStyles: { fillColor: [28, 39, 51], textColor: 255 },
+      columnStyles: {
+        0: { halign: "left", fontStyle: "bold", cellWidth: orient === "p" ? 30 : 40 },
+        4: { halign: "left", fillColor: [251, 241, 244], textColor: [162, 59, 90], fontStyle: "bold" },
+        5: { halign: "left" }
+      },
+      margin: { top: startY, bottom: margine, left: margine, right: margine },
+      pageBreak: "auto",
+      rowPageBreak: "avoid",
+      didParseCell: data => {
+        if (data.section !== "body") return;
+        const m = meta[data.row.index];
+        if (m.tipo === "sett") {
+          Object.assign(data.cell.styles, { fillColor: [233, 237, 241], textColor: [28, 39, 51], fontStyle: "bold", halign: "left" });
+          return;
+        }
+        if (data.column.index >= 1 && data.column.index <= 3 && !m.weekend) {
+          const col = COLORI_PDF[classeOperatore(data.cell.raw)];
+          if (col) { data.cell.styles.fillColor = col[1]; data.cell.styles.textColor = col[0]; data.cell.styles.fontStyle = "bold"; }
+        }
+        if ((m.weekend || m.festivo) && data.column.index <= 3) {
+          data.cell.styles.fillColor = [242, 242, 242];
+          data.cell.styles.textColor = [150, 150, 150];
+        }
+        if (m.festivo && data.column.index === 0) data.cell.styles.textColor = [192, 57, 43];
+        if (m.modificati.includes(data.column.index)) {
+          data.cell.styles.fontStyle = "bolditalic";
+          data.cell.styles.lineColor = [28, 39, 51];
+          data.cell.styles.lineWidth = 0.4;
+        }
+      },
+      didDrawPage: d => {
+        doc.setFontSize(7); doc.setTextColor(150);
+        doc.text("Pag. " + doc.internal.getNumberOfPages(), doc.internal.pageSize.getWidth() - margine, pageH - 2, { align: "right" });
+      }
+    });
+
+    if (scarica) {
+      const nome = sel.value === "tutto" ? "Completo" : sel.value === "futuro" ? "Da_" + chiave(lunediDi(oggiZero())) : sel.value;
+      doc.save(`Turni_Lavoro_Famiglia_${nome}.pdf`);
+    } else {
+      if (ultimoBlob) URL.revokeObjectURL(ultimoBlob);
+      ultimoBlob = doc.output("bloburl");
+      $("pdfPreviewFrame").src = ultimoBlob;
+    }
+  }
+
+  $("apriAnteprimaBtn").addEventListener("click", () => {
+    if (document.activeElement && document.activeElement.isContentEditable) document.activeElement.blur();
+    riempiPeriodi();
+    $("modalAnteprima").style.display = "block";
+    generaPDF(false);
+  });
+  $("chiudiModal").addEventListener("click", () => $("modalAnteprima").style.display = "none");
+  $("scaricaPdfBtn").addEventListener("click", () => generaPDF(true));
+  ["orientamento", "adattaPagina", "periodo"].forEach(id => $(id).addEventListener("change", () => generaPDF(false)));
+
+  /* ================= AVVIO E RECUPERO DATI VECCHIA VERSIONE ================= */
+  function migraVecchiaVersione() {
+    const raw = localStorage.getItem(OLD_KEY);
+    if (!raw) return false;
+    try {
+      const c = JSON.parse(raw);
+      if (!c.dataInizio) return false;
+      const operatori = [c.opA, c.opB, c.opC];
+      const n = parseInt(c.numSettimane, 10) || 26;
+      // La vecchia versione salvava le note per posizione: le ricollego alle date con il vecchio calendario
+      const vecchio = generaTurni(parseData(c.dataInizio), operatori, n);
+      (c.testiCRI || []).forEach((t, i) => {
+        const g = vecchio[i];
+        if (!g) return;
+        if (t.cri && t.cri.trim()) stato.laura[g.key] = t.cri.trim();
+        if (t.note && t.note.trim()) stato.note[g.key] = t.note.trim();
+      });
+      stato.config = { dataInizio: chiave(lunediDi(parseData(c.dataInizio))), numSettimane: n, operatori };
+      stato.nomi = [];
+      completaElencoNomi();
+      salva();
+      return true;
+    } catch { return false; }
+  }
+
+  function avvio() {
+    let migrato = false;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s && s.config) { stato = { ...nuovoStato(), ...s }; completaElencoNomi(); }
+      } else {
+        migrato = migraVecchiaVersione();
+      }
+    } catch { /* dati illeggibili: si riparte da zero */ }
+
+    riempiSelectOperatori(stato.config ? stato.config.operatori : NOMI_PREDEFINITI);
+    if (stato.config) {
+      riempiInput();
+      costruisciCalendario();
+      mostraTurni(true);
+      if (migrato) messaggio("Ho recuperato le note salvate con la versione precedente dell'app.", "info");
+    } else {
+      $("dataInizio").value = chiave(lunediDi(oggiZero()));
+      $("impostazioni").open = true;
+    }
+  }
+
+  avvio();
+
+  /* ================= APP INSTALLABILE (PWA) ================= */
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+  let richiestaInstallazione = null;
+  window.addEventListener("beforeinstallprompt", e => {
+    e.preventDefault();
+    richiestaInstallazione = e;
+    $("installaBtn").hidden = false;
+  });
+  $("installaBtn").addEventListener("click", async () => {
+    if (!richiestaInstallazione) return;
+    richiestaInstallazione.prompt();
+    await richiestaInstallazione.userChoice;
+    richiestaInstallazione = null;
+    $("installaBtn").hidden = true;
+  });
+  window.addEventListener("appinstalled", () => { $("installaBtn").hidden = true; });
+</script>
+</body>
+</html>
